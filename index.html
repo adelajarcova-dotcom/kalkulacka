@@ -58,4 +58,169 @@
                 <div class="grid grid-cols-2 gap-2">
                     <div>
                         <label class="text-[10px]">Každých X let</label>
-                        <input
+                        <input type="number" id="stepYears" value="3">
+                    </div>
+                    <div>
+                        <label class="text-[10px]">Zvýšit o (Kč)</label>
+                        <input type="number" id="stepAmount" value="500">
+                    </div>
+                </div>
+            </div>
+            <button onclick="calculate()" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-lg transition-all transform hover:scale-[1.02]">
+                Přepočítat
+            </button>
+        </div>
+
+        <div class="lg:col-span-8 space-y-6">
+            <div class="card p-6 min-h-[400px]">
+                <canvas id="mainChart"></canvas>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div class="card p-4 text-center border-b-4 border-gray-300">
+                    <span class="text-xs text-gray-500 uppercase font-bold">Vloženo celkem</span>
+                    <div id="outInvested" class="text-xl font-bold text-gray-800">-</div>
+                </div>
+                <div class="card p-4 text-center border-b-4 border-indigo-500">
+                    <span class="text-xs text-indigo-500 uppercase font-bold">Budoucí hodnota</span>
+                    <div id="outNominal" class="text-xl font-bold text-indigo-700">-</div>
+                </div>
+                <div class="card p-4 text-center border-b-4 border-emerald-500">
+                    <span class="text-xs text-emerald-500 uppercase font-bold">Reálná hodnota</span>
+                    <div id="outReal" class="text-xl font-bold text-emerald-700">-</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let chartInstance = null;
+
+function calculate() {
+    const initial = parseFloat(document.getElementById('initialDeposit').value) || 0;
+    let monthly = parseFloat(document.getElementById('monthlyContribution').value) || 0;
+    const years = parseInt(document.getElementById('years').value) || 0;
+    const ratePA = parseFloat(document.getElementById('interestRate').value) / 100;
+    const inflationPA = parseFloat(document.getElementById('inflation').value) / 100;
+    const freq = parseInt(document.getElementById('frequency').value);
+    const stepY = parseInt(document.getElementById('stepYears').value);
+    const stepA = parseFloat(document.getElementById('stepAmount').value);
+
+    let labels = [];
+    let dataNominal = [];
+    let dataReal = [];
+    let dataInvested = [];
+
+    let currentNominal = initial;
+    let totalInvested = initial;
+
+    // Rok 0
+    labels.push("Start");
+    dataNominal.push(initial);
+    dataReal.push(initial);
+    dataInvested.push(initial);
+
+    for (let y = 1; y <= years; y++) {
+        // Zvýšení úložky
+        if (y > 1 && stepY > 0 && (y - 1) % stepY === 0) {
+            monthly += stepA;
+        }
+
+        // Výpočet po měsících pro přesnost
+        for (let m = 1; m <= 12; m++) {
+            currentNominal += monthly;
+            totalInvested += monthly;
+
+            // Úročení dle frekvence
+            if (m % (12 / freq) === 0) {
+                currentNominal *= (1 + (ratePA / freq));
+            }
+        }
+
+        // Výpočet reálné hodnoty (očištěno o inflaci k dnešku)
+        let currentReal = currentNominal / Math.pow((1 + inflationPA), y);
+
+        labels.push(y + ". rok");
+        dataNominal.push(Math.round(currentNominal));
+        dataReal.push(Math.round(currentReal));
+        dataInvested.push(totalInvested);
+    }
+
+    renderResults(totalInvested, currentNominal, dataReal[dataReal.length - 1]);
+    drawChart(labels, dataNominal, dataReal, dataInvested);
+}
+
+function renderResults(inv, nom, real) {
+    const fmt = new Intl.NumberFormat('cs-CZ', { style: 'currency', currency: 'CZK', maximumFractionDigits: 0 });
+    document.getElementById('outInvested').innerText = fmt.format(inv);
+    document.getElementById('outNominal').innerText = fmt.format(nom);
+    document.getElementById('outReal').innerText = fmt.format(real);
+}
+
+function drawChart(labels, nominal, real, invested) {
+    const ctx = document.getElementById('mainChart').getContext('2d');
+    
+    if (chartInstance) {
+        chartInstance.destroy();
+    }
+
+    chartInstance = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [
+                {
+                    label: 'Budoucí stav konta (Kč)',
+                    data: nominal,
+                    borderColor: '#4f46e5',
+                    backgroundColor: 'rgba(79, 70, 229, 0.1)',
+                    fill: true,
+                    tension: 0.3,
+                    pointRadius: 2
+                },
+                {
+                    label: 'Reálná kupní síla (Kč)',
+                    data: real,
+                    borderColor: '#10b981',
+                    borderDash: [5, 5],
+                    fill: false,
+                    tension: 0.3
+                },
+                {
+                    label: 'Celkové vklady (Kč)',
+                    data: invested,
+                    borderColor: '#94a3b8',
+                    borderWidth: 1,
+                    fill: false,
+                    tension: 0
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },
+            plugins: {
+                legend: { position: 'top' }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    ticks: {
+                        callback: function(value) {
+                            return value.toLocaleString('cs-CZ') + ' Kč';
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
+
+// Inicializace
+window.onload = calculate;
+</script>
+
+</body>
+</html>
